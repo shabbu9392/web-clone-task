@@ -1,0 +1,96 @@
+-------messageModel.js---------
+const mongoose = require('mongoose');
+
+const MessageSchema = new mongoose.Schema({
+  meta_msg_id: String,
+  wa_id: String,
+  name: String,
+  direction: String,
+  text: String,
+  timestamp: Date,
+  status: String,
+  raw: Object
+});
+
+module.exports = mongoose.model('processed_messages', MessageSchema);
+-----------------server.js----------------
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const Message = require('./messageModel');
+
+dotenv.config();
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI, { dbName: 'whatsapp' });
+
+// Get all conversations
+app.get('/conversations', async (req, res) => {
+  const chats = await Message.find().sort({ timestamp: -1 });
+  res.json(chats);
+});
+
+// Send demo message
+app.post('/send', async (req, res) => {
+  const msg = await Message.create({
+    wa_id: req.body.wa_id,
+    name: req.body.name,
+    direction: 'out',
+    text: req.body.text,
+    timestamp: new Date(),
+    status: 'sent'
+  });
+  res.json(msg);
+});
+
+app.listen(5000, () => console.log('Server running on port 5000'));
+---------------backend url---------------
+MONGO_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net
+------------processPayloads.js----------------
+const fs = require('fs');
+const path = require('path');
+const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+const Message = require('./messageModel');
+
+dotenv.config();
+
+mongoose.connect(process.env.MONGO_URI, { dbName: 'whatsapp' });
+
+const folder = './payloads'; // put your JSON files here
+
+fs.readdirSync(folder).forEach(file => {
+  if (file.endsWith('.json')) {
+    const data = JSON.parse(fs.readFileSync(path.join(folder, file)));
+
+    // Basic example — you would detect message vs status here
+    const msg = {
+      meta_msg_id: data.id,
+      wa_id: data.wa_id,
+      name: data.name,
+      direction: 'in',
+      text: data.text,
+      timestamp: new Date(),
+      status: 'delivered',
+      raw: data
+    };
+
+    Message.create(msg).then(() => console.log(`Inserted ${file}`));
+  }
+});
+--------------fronted --------------
+function ChatApp() {
+  const [chats, setChats] = React.useState([]);
+  React.useEffect(() => {
+    fetch('/conversations').then(res => res.json()).then(setChats);
+  }, []);
+  return (
+    <div className="app">
+      {chats.map(c => <div>{c.name}: {c.text}</div>)}
+    </div>
+  );
+}
